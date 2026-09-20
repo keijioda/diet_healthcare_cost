@@ -1,0 +1,149 @@
+Diet and healthcare cost/utilization: Outline
+================
+
+## Aim
+
+- To compare healthcare expenditure among five dietary groups of AHS-2
+  and Medicare fee‑for‑service enrollees
+
+## Datasets
+
+- **MBSF Cost and Use**
+  - [Data
+    documentation](https://resdac.org/cms-data/files/mbsf-cost-and-use/data-documentation)
+  - See also [Baik et al (2024) Trends in Racial Disparities in
+    Healthcare Expenditures Among Senior Medicare Fee-for-service
+    Enrollees in 2007-2020](https://pubmed.ncbi.nlm.nih.gov/37957537/)
+  - Payment for services covered by Part A (5 services)
+    - Acute inpatient hospital `ACUTE_*`
+    - Other inpatient hospital `OIP_*`
+    - Skilled nursing facility `SNF_*`
+    - Hospice `HOS_*`
+    - Home health `HH_*`
+  - Payment for services covered by Part B (12 services)
+    - Hospital outpatient `HOP_*`
+    - Ambulatory surgery center `ASC_*`
+    - Anesthesia `ANES_*`
+    - Part B drugs `PTB_DRUG_*`
+    - Part B evaluation & management (E&M) `EM_*`
+    - Part B physician office servises `PHYS_*`
+    - Part B dialysis services `DIALYS_*`
+    - Part B other procedures (not anesthesia or dialysis) `OPROC_*`
+    - Imaging servises `IMG_*`
+    - Part B tests `TEST_*`
+    - Part B durable medical equipment (DME) `DME_*`
+    - Other Part B carrier `OTHC_*`
+  - Part D (prescription drugs) `PTD_*`
+    - `PTD_TOTAL_RX_CST`: Part D Total Prescription Costs
+  - Payer: For each service except for Part D, we have:
+    - Beneficiary payment `*_BENE_PMT`
+      - For hospice and home health, there is no beneficiary payment
+        (beneficiaries pay nothing out of pocket)
+    - Medicare payment `*_MDCR_PMT`
+    - Primary Payer payment `*_PRMRY_PMT`
+    - For acute/other inpatient hospitals, pass-through per diem
+      payments are also available `*_PERDIEM_PMT`
+      - See ResDAC description of [pass-thru per diem
+        payment](https://resdac.org/cms-data/variables/acute-inpatient-hospital-pass-thru-diem-payments)
+      - Notice where it says “This variable was new in 2010; it will
+        always be null/missing in earlier files”
+- **Master Beneficiary Summary Files (MBSF)**
+  - [Data
+    documentation](https://resdac.org/cms-data/files/mbsf-base/data-documentation)
+  - `STATE_CODE`: State code for beneficiary
+    - See the coding
+      [here](https://resdac.org/cms-data/variables/state-code-beneficiary-ssa-code)
+    - Use this to identify census regions: Northeast, Midwest, South and
+      West
+  - `STATE_CNTY_FIPS_CD_01` to `STATE_CNTY_FIPS_CD_12`: State and county
+    FIPS code from January to December
+    - Map the FIPS code to [Rural-Urban Continuum
+      code](https://www.ers.usda.gov/data-products/rural-urban-continuum-codes)
+    - Use the most frequent FIPS code across 12 months
+    - Can be used as a covariate for urban/rural
+  - `AGE_AT_END_REF_YR`: Age of beneficiary at end of year
+  - `BENE_BIRTH_DT`: Beneficiary date of birth
+    - Use it for birth cohort
+  - `BENE_DEATH_DT`: Beneficiary date of death
+    - Adjust for the final year of life
+  - `VALID_DEATH_DT_SW`: Valid date of death switch
+  - `SEX_IDENT_CD`: Sex
+  - `RTI_RACE_CD`: RTI race code
+  - `ENTLMT_RSN_ORIG`: Original reason for entitlement code
+    - Adjust for disability or ESRD
+  - `BENE_HI_CVRAGE_TOT_MONS`: Part A months count
+  - `BENE_SMI_CVRAGE_TOT_MONS`: Part B months count
+    - Model offset for Parts A & B coverage
+  - `BENE_HMO_CVRAGE_TOT_MONS`: HMO (Medicare Advantage) coverage count
+    - For excluding beneficiaries with Medicare Advantage
+  - `PTD_PLAN_CVRG_MONS`: Months of Part D coverage
+    - Adjust for the number of months of Part D coverage
+  - `DUAL_ELGBL_MONS`: Months of dual eligibility with Medicaid
+    - Adjust for dual eligibility
+- **Chronic Conditions**
+  - To identify comorbidities, or the number of comorbidities
+  - Should the model adjust for the number of comorbidities or not,
+    being a mediator in the diet-health pathway?
+
+## Outcomes
+
+- Total FFS expenditure: Beneficiary + Medicare + Primary (+ Per diem if
+  available)
+- Part A, Part B, and Part D separately?
+
+## Modelling approaches
+
+- Medicare data available for 15 years, from 2008 to 2022
+- Rather than averaging payments across years for each subject, we can
+  treat the data as repeated measures
+- To compare total medical expenditure across dietary patterns over 15
+  years, we need to adjust for inflation, converting payments in all
+  years to 2022 USD
+  - Use the CPI for Medical Care, multiplying each year’s payments by a
+    deflator equal to the ratio of the 2022 index value to that year’s
+    index value
+  - CPI for medical care available from [the FRB
+    website](https://fred.stlouisfed.org/series/CPIMEDSL)
+- Let $Y_{ij}$ denote the total medical expenditure for subject
+  $i\,(i = 1, \cdots, n)$ on year $j \,(j = 2008,\cdots,2022)$
+  - This requires models that account for correlations among repeated
+    measurements $Y_{ij}$ within the subject $i$ over
+    $j = 2008,\cdots,2022$
+- The total medical expenditure $Y_{ij}$ is expected to have many zeros
+  (beneficiaries with no healthcare usage)
+  - For the remaining beneficiaries, $Y_{ij}$ is positive and expected
+    to be highly right-skewed
+- We use a two-part hurdle model:
+  - The first part models $Pr(Y_{ij} > 0)$, the probability that a
+    beneficiary has any positive healthcare spending
+    - Fit using a generalized linear mixed model (GLMM) with a binomial
+      distribution
+    - Yields odds ratios for the association between diet and the
+      likelihood of healthcare utilization
+  - The second part models $Y_{ij} \mid Y_{ij} > 0$, the amount of
+    spending among beneficiaries with positive spending
+    - Fit using a GLMM with a Gamma distribution
+    - Yields ratios of means for the association between diet and
+      healthcare cost, conditional on positive spending
+  - Expected healthcare spending is obtained by multiplying the
+    predicted probabilities of positive spending, $Pr(Y_{ij} > 0)$, from
+    the first part, by the predicted spending conditional on positive
+    spending $Y_{ij} \mid Y_{ij} > 0$, from the second part
+- Covariates:
+  - Calendar year, centered at 2008
+  - Demographics:
+    - Age at the end of year, centered at 65 yo (time-dependent)
+    - Gender
+    - RTI race
+    - Census region
+    - Urban/rural (from beneficiary’s State/County FIPS code)
+    - AHS-2: Education
+    - AHS-2: Marital status
+  - Lifestyle
+    - AHS-2: Smoking status
+    - AHS-2: Alcohol use
+  - Medicare
+    - Dual eligibility, number of months
+    - Part D coverage, number of months
+    - Original reason for entitlement (Age or disability/ESRD)
+    - Indicator for beneficiaries’ final year of life
