@@ -1,1 +1,1 @@
-# diet_healthcare_cost
+# Dietary Patterns and Healthcare Expenditures Study
