@@ -472,7 +472,7 @@ mdcr_ahs_65_ffs <- mdcr_ahs_65_ffs %>%
 
 ### Participant characteristics at baseline
 
-```{r baseline_descriptives}
+```{r baseline_descriptives, results = 'asis'}
 
 # Baseline characteristics
 baseline_data <- mdcr_ahs_65_ffs %>%
@@ -546,13 +546,15 @@ baseline_data %>%
   add_overall() %>%
   modify_header(label ~ "**Characteristic**") %>%
   modify_spanning_header(all_stat_cols() ~ "**Vegetarian Status**") %>%
-  bold_labels()
+  bold_labels() %>% 
+  as_gt() %>%
+  gt::as_raw_html(inline_css = TRUE)
 
 ```
 
 ### Number of beneficiaries by years and diet pattern
 
-```{r N_bene_by_year_diet}
+```{r N_bene_by_year_diet, results = 'asis'}
 
 # Person-year by vegstat
 n_bene_by_year_diet <- mdcr_ahs_65_ffs %>%
@@ -583,7 +585,9 @@ n_bene_by_year_diet %>%
   tab_style(
     style = cell_text(weight = "bold"),
     locations = cells_column_labels(everything())
-  )
+  ) %>% 
+  gt::as_raw_html(inline_css = TRUE)
+
 ```
 
 * All diet groups show growth through roughly 2016, then decline thereafter
@@ -624,7 +628,7 @@ mdcr_ahs_65_ffs %>%
     * Vegans again showing the highest concentration (44.4% and 16.5%, respectively)
   * Despite having the lowest mean spending, vegans show the greatest relative inequality in spending
 
-```{r total_pay_distribution_stats}
+```{r total_pay_distribution_stats, results = 'asis'}
 
 # Cost-distribution/skewness table by vegstat
 # Uses the full beneficiary-year panel (mdcr_ahs_65_ffs)
@@ -763,7 +767,8 @@ cost_summary_pub %>%
     style = cell_borders(sides = "top", color = "black", weight = px(1.5)),
     locations = cells_body(rows = `Diet group` == "Overall")
   ) %>%
-  tab_options(table.font.size = px(12))
+  tab_options(table.font.size = px(12)) %>% 
+  gt::as_raw_html(inline_css = TRUE)
 
 ```
 
@@ -774,7 +779,7 @@ cost_summary_pub %>%
   * Vegans retain the highest spending concentration among users (highest Gini, highest top 5%/1% shares)
     * suggesting that even conditional on using any healthcare, vegan spending is somewhat more concentrated among a smaller subset of high-cost users than in other diet groups
 
-```{r total_pay_distribution_stats_exclude_zero}
+```{r total_pay_distribution_stats_exclude_zero, results = 'asis'}
 
 # Cost-distribution/skewness table by vegstat
 # Uses the full beneficiary-year panel (mdcr_ahs_65_ffs)
@@ -906,7 +911,8 @@ cost_summary_pub %>%
     style = cell_borders(sides = "top", color = "black", weight = px(1.5)),
     locations = cells_body(rows = `Diet group` == "Overall")
   ) %>%
-  tab_options(table.font.size = px(12))
+  tab_options(table.font.size = px(12)) %>% 
+  gt::as_raw_html(inline_css = TRUE)
 
 ```
 
