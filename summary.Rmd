@@ -470,7 +470,19 @@ mdcr_ahs_65_ffs <- mdcr_ahs_65_ffs %>%
   
 ## Descriptive tables
 
-### Participant characteristics at baseline
+### Participant characteristics at Medicare follow-up entry
+
+* The table below shows participant characteristics measured either at Medicare follow-up entry (2008-2022) or, for variables drawn from the AHS-2 questionnaire, at AHS-2 baseline
+  * The variable `Age at Medicare follow-up entry` refers to the beneficiary's age at their first appearance in Medicare data (2008-2022)
+  * Race/ethnicity was derived from the [RTI race code](https://resdac.org/cms-data/variables/research-triangle-institute-rti-race-code) in the MBSF and collapsed into 3 groups: Non-Hispanic White, Black (or African-American), and other race. Non-Hispanic White served as the reference group in the model
+  * Census region was derived from `STATE_CODE` in the MBSF (West as the reference)
+  * Urban/rural residence was derived from the monthly state/county FIPS codes (`STATE_CNTY_FIPS_CD_01` through `STATE_CNTY_FIPS_CD_12`); when more than one FIPS code appeared within a year, the most frequently occurring one was used. Each FIPS code was then mapped to a [USDA Rural-Urban Continuum Code](https://www.ers.usda.gov/data-products/rural-urban-continuum-codes) using the `rurality` package (version 0.1.1) and collapsed into a binary urban/rural indicator:
+    * Urban: codes 1-3 (metro counties, ranging from ≥1 million population down to under 250,000), served as the reference
+    * Rural: codes 4-9 (nonmetro counties, ranging from 20,000 or more urban population down to under 5,000)
+  * Medicare entitlement reason was derived from [the original reason for entitlement](https://resdac.org/cms-data/variables/medicare-original-reason-entitlement-code-orec) `MDCR_OREC`, and collapsed into two
+    * Old age & survivor's insurance (reference)
+    * Disability insurance benefit (DIB) and/or end-stage renal disease (ESRD)
+  * The variable `Part A and Part B coverage (months)` was calculated as the minimum of total Part A and Part B coverage months in the year. This assumes the two coverage periods overlap fully, which holds for nearly all beneficiaries in this cohort
 
 ```{r baseline_descriptives, results = 'asis'}
 
@@ -524,17 +536,17 @@ baseline_data %>%
     by = vegstat,
     label = list(
       sex           ~ "Sex",
-      ffs_entry_age ~ "Age at FFS entry",
+      ffs_entry_age ~ "Age at Medicare follow-up entry",
       bth_cohort    ~ "Birth cohort",
       rti_race3     ~ "Race/ethnicity",
       region        ~ "Census region",
       urban_rural   ~ "Urban/rural residence",
-      educat3       ~ "Education",
-      marital       ~ "Marital status",
-      smkcat        ~ "Smoking status",
-      alccat        ~ "Alcohol use",
+      educat3       ~ "Education (AHS-2)",
+      marital       ~ "Marital status (AHS-2)",
+      smkcat        ~ "Smoking status (AHS-2)",
+      alccat        ~ "Alcohol use (AHS-2)",
       entlmt_rsn    ~ "Medicare entitlement reason",
-      ab_entitled_cat ~ "Part A/B entitlement (months)",
+      ab_entitled_cat ~ "Part A and Part B coverage (months)",
       ptd_cvrg_cat    ~ "Part D coverage (months)",
       dual_elgbl_cat  ~ "Dual eligibility (months)"
     ),
@@ -900,7 +912,7 @@ cost_summary_pub <- cost_summary_full %>%
 cost_summary_pub %>%
   gt() %>%
   tab_header(
-    title = "Total payment distribution by diet group"
+    title = "Total payment distribution by diet group, excluding zero payments"
   ) %>%
   tab_footnote(
     footnote = "N reflects beneficiary-years, not unique beneficiaries. Gini coefficient excludes beneficiary-years with zero payment. Top 5%/1% dollar shares use each group's own percentile cutoffs.",

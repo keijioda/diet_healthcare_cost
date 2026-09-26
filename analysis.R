@@ -133,9 +133,6 @@ all_cu_long <- read_mbsf_costuse_years(2008:2022) %>%
 # 46,897 distinct beneficiary IDs
 n_distinct(all_cu_long$BENE_ID)
 
-# Check
-names(all_cu_long)
-
 
 # Merge Medicare data -----------------------------------------------------
 
@@ -422,7 +419,7 @@ mdcr_ahs_65_ffs %>% count(valid_death_dt_sw)
 # When the exact day of death isn't available from the underlying source, 
 # CMS fills in the day as the last day of that month as a placeholder
 mdcr_ahs_65_ffs %>%
-  filter(died_this_year, is.na(valid_death_dt_sw)) %>%
+  filter(died_this_year == "Yes", is.na(valid_death_dt_sw)) %>%
   select(bene_id, extract_year, bene_death_dt, valid_death_dt_sw)
 
 # Complete dataset
@@ -439,6 +436,7 @@ var_needed <- c(
   "cage",
   "birth_yr",
   "bth_cohort",
+  "bene_birth_dt",
   "sex",
   "rti_race3",
   "region",
