@@ -140,10 +140,6 @@ n_distinct(all_cu_long$BENE_ID)
 nrow(all_mbsf_long) == nrow(all_cc_long)
 nrow(all_mbsf_long) == nrow(all_cu_long)
 
-names(all_mbsf_long)
-names(all_cc_long)
-names(all_cu_long)
-
 all_mdcr_long <- all_mbsf_long %>% 
   inner_join(all_cc_long, by = c("BENE_ID", "BENE_ENROLLMT_REF_YR")) %>% 
   inner_join(all_cu_long, by = c("BENE_ID", "BENE_ENROLLMT_REF_YR")) 
@@ -333,24 +329,14 @@ n_distinct(mdcr_ahs2$analysisid)
 # Calculate total payment subject-year, nominal & real --------------------
 
 # Setup
-# Identify payment variables: Payment by Medicare
-mdcr_payment_vars <- mdcr_ahs2 %>%
-  select(matches("_mdcr_pmt$")) %>%
+# Identify part A payment variables
+payment_vars_part_a <- mdcr_ahs2 %>%
+  select(matches("(acute|oip|snf|hos|hh)_(mdcr|bene|prmry|perdiem)_pmt$")) %>%
   names()
 
-# Identify payment variables: Payment by beneficiary
-bene_payment_vars <- mdcr_ahs2 %>%
-  select(matches("_bene_pmt$")) %>%
-  names()
-
-# Identify payment variables: Payment by primary insurer
-prmry_payment_vars <- mdcr_ahs2 %>%
-  select(matches("_prmry_pmt$")) %>%
-  names()
-
-# Identify payment variables: Payment by medicare/beneficiary/primary, as well as per diem
-payment_vars <- mdcr_ahs2 %>%
-  select(matches("_(mdcr|bene|prmry|perdiem)_pmt$")) %>%
+# Identify part B payment variables
+payment_vars_part_b <- mdcr_ahs2 %>%
+  select(matches("(hop|asc|anes|ptb_drug|em|phys|dialys|oproc|img|test|dme|othc)_(mdcr|bene|prmry)_pmt$")) %>%
   names()
 
 # CPI-U Medical Care data, monthly, seasonally-adjusted
@@ -369,17 +355,30 @@ cpi_medical_year <- cpi_medical_year %>%
   mutate(deflator_2022usd = ref_cpi / cpi_medical)
 
 # Calculate total payment subject-year, both nominal and real 
+# Note that total_pmt = Part A + Part B only and keep Part D as separate
 mdcr_ahs3 <- mdcr_ahs2 %>%
   left_join(cpi_medical_year, by = "extract_year") %>%
   mutate(
-    total_pmt           = rowSums(across(all_of(payment_vars)), na.rm = TRUE),
+    pmt_pt_a            = rowSums(across(all_of(payment_vars_part_a)), na.rm = TRUE),
+    pmt_pt_a_2022usd    = pmt_pt_a * deflator_2022usd,
+    pmt_pt_a_2022usd_k  = pmt_pt_a_2022usd / 1000,
+    
+    pmt_pt_b            = rowSums(across(all_of(payment_vars_part_b)), na.rm = TRUE),
+    pmt_pt_b_2022usd    = pmt_pt_b * deflator_2022usd,
+    pmt_pt_b_2022usd_k  = pmt_pt_b_2022usd / 1000,
+    
+    pmt_pt_d            = ptd_total_rx_cst,
+    pmt_pt_d_2022usd    = pmt_pt_d * deflator_2022usd,
+    pmt_pt_d_2022usd_k  = pmt_pt_d_2022usd / 1000,
+    
+    total_pmt           = pmt_pt_a + pmt_pt_b,
     total_pmt_2022usd   = total_pmt * deflator_2022usd,
     total_pmt_2022usd_k = total_pmt_2022usd / 1000
   )
 
 # Check
 mdcr_ahs3 %>%
-  select(bene_id, bene_enrollmt_ref_yr, total_pmt, total_pmt_2022usd)
+  select(bene_id, bene_enrollmt_ref_yr, total_pmt, pmt_pt_a, pmt_pt_b, pmt_pt_d)
 
 
 # Inclusion-exclusion criteria --------------------------------------------
@@ -451,9 +450,20 @@ var_needed <- c(
   "entlmt_rsn",
   "died_this_year",
   "ab_entitled_months",
+  "bene_hi_cvrage_tot_mons",
+  "bene_smi_cvrage_tot_mons",
   "total_pmt",
   "total_pmt_2022usd",
-  "total_pmt_2022usd_k"
+  "total_pmt_2022usd_k",
+  "pmt_pt_a",
+  "pmt_pt_a_2022usd",
+  "pmt_pt_a_2022usd_k",
+  "pmt_pt_b",
+  "pmt_pt_b_2022usd",
+  "pmt_pt_b_2022usd_k"
+  # "pmt_pt_d",
+  # "pmt_pt_d_2022usd",
+  # "pmt_pt_d_2022usd_k"
 )
 
 # n.obs = 268,301 from 34,254 distinct Analysis IDs
@@ -1070,7 +1080,7 @@ add_covars <- paste(covars, collapse = " + ")
 rhs <- paste(c(add_covars, "vegstat2", "(1 | bene_id)"), collapse = " + ")
 fm  <- paste("I(total_pmt_2022usd_k > 0) ~ ", rhs) %>% as.formula()
 
-# ~20 min
+# ~7 min
 system.time({
   m_logistic <- glmmTMB(fm, family = binomial, data = mdcr_ahs_65_ffs)
 })
@@ -1088,7 +1098,7 @@ print(n = Inf)
 performance::check_collinearity(m_logistic)
 
 # Natural splines on age
-# ~12 min
+# ~10 min
 system.time({
   m_logistic_cage_ns <- update(m_logistic, . ~ . - cage + ns(cage, df = 3))
 })
@@ -1104,7 +1114,7 @@ tidy(m_logistic_cage_ns, effects = "fixed", exponentiate = TRUE, conf.int = TRUE
   print(n = Inf)
 
 # Natural splines on year 
-# ~16 min
+# ~13 min
 system.time({
   m_logistic_cyear_ns <- update(m_logistic, . ~ . - cyear + ns(cyear, df = 3))
 })
@@ -1120,7 +1130,7 @@ tidy(m_logistic_cyear_ns, effects = "fixed", exponentiate = TRUE, conf.int = TRU
   print(n = Inf)
 
 # Splines on both age and year 
-# ~18 min
+# ~19 min
 system.time({
   m_logistic_both_ns <- update(m_logistic, . ~ . - cage - cyear + ns(cage, df = 3) + ns(cyear, df = 3))
 })
@@ -1130,11 +1140,19 @@ AIC(m_logistic, m_logistic_cage_ns, m_logistic_cyear_ns, m_logistic_both_ns)
 BIC(m_logistic, m_logistic_cage_ns, m_logistic_cyear_ns, m_logistic_both_ns)
 anova(m_logistic_cage_ns, m_logistic_both_ns)
 
+tidy(
+  m_logistic_both_ns, 
+  effects = "fixed", 
+  exponentiate = TRUE, 
+  conf.int = TRUE
+) %>% 
+  print(n = Inf)
+
 performance::check_collinearity(m_logistic_both_ns)
 diagnose(m_logistic_both_ns)
 
-# Add vegstat x race interaction p = 0.01453
-# ~18 min
+# Add vegstat x race interaction p = 0.0504
+# ~23 min
 system.time({
   m_logistic_both_ns_intx <- update(m_logistic_both_ns, . ~ . + vegstat2:rti_race3)
 })
@@ -1142,40 +1160,8 @@ system.time({
 summary(m_logistic_both_ns_intx)
 anova(m_logistic_both_ns, m_logistic_both_ns_intx)
 
-# library(ggeffects)
-# plot(ggpredict(m_logistic_both_ns_intx, terms = c("vegstat2", "rti_race3")))
-
-
-# marginaleffects — averages over the actual observed covariate distribution
-pred_df <- avg_predictions(m_logistic_both_ns_intx, by = c("vegstat2", "rti_race3"), type = "response")
-
-ggplot(pred_df, aes(x = vegstat2, y = estimate, color = rti_race3, group = rti_race3)) +
-  geom_point(position = position_dodge(width = 0.3), size = 2.2) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.15,
-                position = position_dodge(width = 0.3)) +
-  geom_line(position = position_dodge(width = 0.3), linewidth = 0.4) +
-  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
-  labs(y = "Model-predicted (population-averaged) probability of any spending",
-       x = NULL, color = "Race") +
-  theme_minimal()
-
-
-mdcr_ahs_65_ffs %>%
-  group_by(vegstat2, rti_race3) %>%
-  summarise(
-    n = n(),
-    pct_zero = 100 * mean(total_pmt_2022usd == 0, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  ggplot(aes(x = vegstat2, y = pct_zero, color = rti_race3, group = rti_race3)) +
-  geom_point(position = position_dodge(width = 0.4), size = 2.2) +
-  geom_line(position = position_dodge(width = 0.4), linewidth = 0.4) +
-  scale_y_continuous(limits = c(0, NA)) +
-  labs(y = "% of beneficiary-years with $0 payment for care", x = NULL, color = "Race") +
-  theme_minimal()
-
 # Add vegstat x sex interaction, not signfifianct at all 
-# ~18 min
+# ~22 min
 system.time({
   m_logistic_both_ns_intx2 <- update(m_logistic_both_ns, . ~ . + vegstat2:sex)
 })
@@ -1267,7 +1253,7 @@ summary(m_lognormal)
 tidy(m_lognormal, effects = "fixed", exponentiate = TRUE, conf.int = TRUE)
 
 # GLMM gamma with offset for Parts A and B coverage
-# 11 min
+# 20 min
 system.time({
 m_gamma <- glmmTMB(
   fm, family = Gamma(link = "log"),
@@ -1284,12 +1270,12 @@ tidy(
   print(n = Inf)
 
 # Natural splines on age
-# 20 min
+# 25 min
 system.time({
   m_gamma_cage_ns <- update(m_gamma, . ~ . - cage + ns(cage, df = 3))
 })
 
-# Age spline is highly significant, p <.0001
+# Age spline is highly significant, p = 0.003
 anova(m_gamma, m_gamma_cage_ns)
 summary(m_gamma_cage_ns)
 
@@ -1300,7 +1286,7 @@ tidy(m_gamma_cage_ns, effects = "fixed", exponentiate = TRUE, conf.int = TRUE) %
   print(n = Inf)
 
 # Natural splines on year 
-# 24 min
+# 28 min
 system.time({
   m_gamma_cyear_ns <- update(m_gamma, . ~ . - cyear + ns(cyear, df = 3))
 })
@@ -1342,7 +1328,7 @@ anova(m_gamma_cage_ns, m_gamma_both_ns)
 anova(m_gamma_cyear_ns, m_gamma_both_ns)
 
 # Check interaction
-# Interaction b/w vegstat and rti_race -- not significant p = 0.049
+# Interaction b/w vegstat and rti_race -- Significant p = 0.065
 # 50 min
 system.time({
   m_gamma_both_ns_intx <- update(m_gamma_both_ns, . ~ . + vegstat2:rti_race3)
@@ -1350,8 +1336,8 @@ system.time({
 
 anova(m_gamma_both_ns, m_gamma_both_ns_intx)
 
-# Interaction b/w vegstat and sex -- not significant p = 0.2986
-# 50 min
+# Interaction b/w vegstat and sex -- not significant p = 0.2797
+# 5 min
 system.time({
   m_gamma_both_ns_intx <- update(m_gamma_both_ns, . ~ . + vegstat2:sex)
 })
@@ -1433,6 +1419,7 @@ compute_gamma_avgpred <- function(veg_level, data, model) {
   avg_predictions(model, newdata = nd, type = "response")
 }
 
+# 40 mins
 system.time({
   logit_results <- lapply(veg_levels, compute_logit_avgpred, data = mdcr_ahs_65_ffs, model = m_logistic_both_ns)
   gamma_results <- lapply(veg_levels, compute_gamma_avgpred, data = gamma_data, model = m_gamma_both_ns_disp)
@@ -1493,8 +1480,8 @@ ggplot(combined, aes(x = vegstat2_label, y = E_Y_dollars, color = vegstat2_label
 
 ggplot(combined, aes(x = vegstat2_label, y = E_Y_dollars, color = vegstat2_label)) +
   geom_pointrange(aes(ymin = ci_lo, ymax = ci_hi), size = 0.8, linewidth = 1) +
-  scale_x_discrete(limits = rev(veg_labels[veg_order])) +
-  scale_y_continuous(labels = scales::label_dollar(), limits = c(10000, 18000)) +
+  scale_x_discrete(limits = rev(unname(veg_labels[veg_order]))) +
+  scale_y_continuous(labels = scales::label_dollar(), limits = c(10000, 16000)) +
   coord_flip() +
   labs(
     x = NULL,
@@ -1525,7 +1512,7 @@ logistic_terms <- tidy(m_logistic_both_ns, effects = "fixed", conf.int = TRUE, e
   filter(grepl("^vegstat2", term)) %>%
   mutate(part = "Probability of any payment (OR)")
 
-gamma_terms <- tidy(m_gamma_both_ns, effects = "fixed", conf.int = TRUE, exponentiate = TRUE) %>%
+gamma_terms <- tidy(m_gamma_both_ns_disp, effects = "fixed", conf.int = TRUE, exponentiate = TRUE) %>%
   filter(grepl("^vegstat2", term)) %>%
   mutate(part = "Payment amount | positive (cost ratio)")
 

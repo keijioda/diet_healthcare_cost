@@ -319,24 +319,14 @@ mdcr_ahs2 <- mdcr_ahs %>%
 # Calculate total payment subject-year, nominal & real --------------------
 
 # Setup
-# Identify payment variables: Payment by Medicare
-mdcr_payment_vars <- mdcr_ahs2 %>%
-  select(matches("_mdcr_pmt$")) %>%
+# Identify part A payment variables
+payment_vars_part_a <- mdcr_ahs2 %>%
+  select(matches("(acute|oip|snf|hos|hh)_(mdcr|bene|prmry|perdiem)_pmt$")) %>%
   names()
 
-# Identify payment variables: Payment by beneficiary
-bene_payment_vars <- mdcr_ahs2 %>%
-  select(matches("_bene_pmt$")) %>%
-  names()
-
-# Identify payment variables: Payment by primary insurer
-prmry_payment_vars <- mdcr_ahs2 %>%
-  select(matches("_prmry_pmt$")) %>%
-  names()
-
-# Identify payment variables: Payment by medicare/beneficiary/primary, as well as per diem
-payment_vars <- mdcr_ahs2 %>%
-  select(matches("_(mdcr|bene|prmry|perdiem)_pmt$")) %>%
+# Identify part B payment variables
+payment_vars_part_b <- mdcr_ahs2 %>%
+  select(matches("(hop|asc|anes|ptb_drug|em|phys|dialys|oproc|img|test|dme|othc)_(mdcr|bene|prmry)_pmt$")) %>%
   names()
 
 # CPI-U Medical Care data, monthly, seasonally-adjusted
@@ -355,13 +345,27 @@ cpi_medical_year <- cpi_medical_year %>%
   mutate(deflator_2022usd = ref_cpi / cpi_medical)
 
 # Calculate total payment subject-year, both nominal and real 
+# Note that total_pmt = Part A + Part B only and keep Part D as separate
 mdcr_ahs3 <- mdcr_ahs2 %>%
   left_join(cpi_medical_year, by = "extract_year") %>%
   mutate(
-    total_pmt           = rowSums(across(all_of(payment_vars)), na.rm = TRUE),
+    pmt_pt_a            = rowSums(across(all_of(payment_vars_part_a)), na.rm = TRUE),
+    pmt_pt_a_2022usd    = pmt_pt_a * deflator_2022usd,
+    pmt_pt_a_2022usd_k  = pmt_pt_a_2022usd / 1000,
+    
+    pmt_pt_b            = rowSums(across(all_of(payment_vars_part_b)), na.rm = TRUE),
+    pmt_pt_b_2022usd    = pmt_pt_b * deflator_2022usd,
+    pmt_pt_b_2022usd_k  = pmt_pt_b_2022usd / 1000,
+    
+    pmt_pt_d            = ptd_total_rx_cst,
+    pmt_pt_d_2022usd    = pmt_pt_d * deflator_2022usd,
+    pmt_pt_d_2022usd_k  = pmt_pt_d_2022usd / 1000,
+    
+    total_pmt           = pmt_pt_a + pmt_pt_b,
     total_pmt_2022usd   = total_pmt * deflator_2022usd,
     total_pmt_2022usd_k = total_pmt_2022usd / 1000
   )
+
 
 
 # Inclusion-exclusion criteria --------------------------------------------
@@ -448,7 +452,7 @@ mdcr_ahs_65_ffs <- mdcr_ahs_65_ffs %>%
 
 ## Outcomes
 
-* Total FFS expenditure: Beneficiary + Medicare + Primary (+ Per diem if available) 
+* Total FFS expenditure: Beneficiary + Medicare + Primary (+ Per diem if available), i.e., All Part A + Part B
 * Part A, Part B, and Part D separately?
 
 ## Exposure of interest
@@ -1109,7 +1113,6 @@ mdcr_ahs_65_ffs %>%
 ```
 
 
-
 ## Modelling approaches
 
 ### Two-part hurdle model
@@ -1121,10 +1124,10 @@ mdcr_ahs_65_ffs %>%
 * We use a two-part hurdle model:
   * The first part models $Pr(Y_{ij} > 0)$, the probability that a beneficiary has any positive healthcare spending
     * Fit using a generalized linear mixed model (GLMM) with a binomial distribution
-    * Yields odds ratios for the association between diet and the likelihood of healthcare utilization
+    * Yields **odds ratios** for the association between diet and the likelihood of healthcare utilization
   * The second part models $Y_{ij} \mid Y_{ij} > 0$, the amount of spending among beneficiaries with positive spending
     * Fit using a GLMM with a Gamma distribution
-    * Yields ratios of means for the association between diet and healthcare cost, conditional on positive spending
+    * Yields **mean ratios** for the association between diet and healthcare cost, conditional on positive spending
   * Expected healthcare spending is obtained by multiplying the predicted probabilities of positive spending, $Pr(Y_{ij} > 0)$, from the first part, by the predicted spending conditional on positive spending $Y_{ij} \mid Y_{ij} > 0$, from the second part
 
 ### Covariates
@@ -1146,4 +1149,345 @@ mdcr_ahs_65_ffs %>%
     * Part D coverage, number of months
     * Original reason for entitlement (Age or disability/ESRD)
     * Indicator for beneficiaries' final year of life
-    
+
+## First part: GLMM with a binomial distribution and logit link
+
+### Model description
+
+* The first part models $Pr(Y_{ij} > 0)$, the probability that a beneficiary had any positive healthcare spending, i.e., whether they used any healthcare at all
+  * Fit using a generalized linear mixed model (GLMM) with a binomial distribution and logit link
+  * The model includes all covariates listed above. To account for potential non-linear associations, natural cubic spline terms (4 knots) were used for both calendar year and age. There was no evidence of severe collinearity between calendar year and age
+  * The model also includes a random intercept for beneficiary, to account for repeated measures within the same individual over time
+
+* Adjusted odds ratios were estimated for the association between dietary pattern and the likelihood of any healthcare use
+
+## Second part: GLMM with a Gamma distribution and log link
+
+### Model description
+
+* The second part models $Y_{ij} \mid Y_{ij} > 0$, the amount of healthcare spending among beneficiaries with positive spending
+  * Fit using a generalized linear mixed model (GLMM) with a Gamma distribution and log link
+  * The model includes all covariates listed above. To account for potential non-linear associations, natural cubic spline terms (4 knots) were used for both calendar year and age. There was no evidence of severe collinearity between calendar year and age
+  * An offset of log(months entitled to Part A and Part B) was included to account for beneficiary-years with less than full-year Medicare FFS coverage
+  * Group-specific dispersion parameters were estimated, allowing the variability in healthcare spending to differ across dietary patterns
+  * The model also includes a random intercept for beneficiary, to account for repeated measures within the same individual over time
+
+* Adjusted mean ratios were estimated for the association between dietary pattern and healthcare spending, conditional on positive spending
+
+## Model results
+
+
+```{r fit_hurdle_models, cache = TRUE}
+
+# Two-stage hurdle model --------------------------------------------------
+
+# Covariates (except for vegstat)
+covars <- c(
+  "cyear",
+  "cage",
+  "sex",
+  "rti_race3",
+  "region",
+  "urban_rural",
+  "educat3m",
+  "marital",
+  "smkcat",
+  "alccat",
+  "dual_elgbl_mons",
+  "ptd_plan_cvrg_mons",
+  "entlmt_rsn",
+  "died_this_year"
+)
+
+add_covars <- paste(covars, collapse = " + ")
+
+## Stage 1 GLMM Logistic --------------------------------------------------
+
+# Final model: splines on both age and calendar year
+# Swap cage/cyear for their spline terms in the covariate list
+covars_final <- c(
+  setdiff(covars, c("cage", "cyear")),
+  "ns(cage, df = 3)",
+  "ns(cyear, df = 3)",
+  "vegstat2",
+  "(1 | bene_id)"
+)
+
+rhs_final <- paste(covars_final, collapse = " + ")
+fm_final  <- paste("I(total_pmt_2022usd_k > 0) ~", rhs_final) %>% as.formula()
+
+m_logistic_both_ns <- glmmTMB(fm_final, family = binomial, data = mdcr_ahs_65_ffs)
+
+## Stage 2 GLMM Gamma -----------------------------------------------------
+
+# Splines on both age and year
+covars_final <- c(
+  setdiff(covars, c("cage", "cyear")),
+  "ns(cage, df = 3)",
+  "ns(cyear, df = 3)",
+  "vegstat2",
+  "(1 | bene_id)"
+)
+
+rhs_final <- paste(covars_final, collapse = " + ")
+fm_final  <- paste("total_pmt_2022usd_k ~ offset(log(ab_entitled_months)) +", rhs_final) %>% as.formula()
+
+m_gamma_both_ns <- glmmTMB(
+  fm_final, family = Gamma(link = "log"),
+  data = subset(mdcr_ahs_65_ffs, total_pmt_2022usd > 0 & ab_entitled_months > 0)
+)
+
+# Dispersion-varying model: add group-varying dispersion (shape) by vegstat2
+m_gamma_both_ns_disp <- glmmTMB(
+  formula(m_gamma_both_ns),
+  dispformula = ~ vegstat2,
+  family = Gamma(link = "log"),
+  data = subset(mdcr_ahs_65_ffs, total_pmt_2022usd > 0 & ab_entitled_months > 0),
+  start = list(
+    beta  = fixef(m_gamma_both_ns)$cond,
+    theta = getME(m_gamma_both_ns, "theta")
+  ),
+  control = glmmTMBControl(optCtrl = list(iter.max = 1000, eval.max = 1000))
+)
+
+```
+
+
+### Odds ratios and mean ratio for dietary pattern
+
+* The figure below shows odds ratios and mean ratios of healthcare expenditure by dietary pattern
+  * Probability of any payment: vegan, lacto-ovo, and pesco-vegetarian all had ORs significantly below 1
+  * Payment amount given positive: all four vegetarian subgroups, including semi-vegetarian, had mean ratios significantly below 1
+ 
+
+```{r hurdle_model_OR_MR, fig.height = 4, fig.width = 10}
+
+# Forest plots for vegstat ------------------------------------------------
+
+# Labels
+veg_labels <- c(
+  vegan       = "Vegan",
+  `lacto-ovo` = "Lacto-ovo vegetarian",
+  pesco       = "Pesco-vegetarian",
+  semi        = "Semi-vegetarian",
+  nonveg      = "Non-vegetarian"
+)
+
+veg_order  <- c("vegan", "lacto-ovo", "pesco", "semi", "nonveg")
+part_order <- c("Probability of any payment (OR)", "Payment amount | positive (cost ratio)")
+
+# Extract model estimates
+logistic_terms <- tidy(m_logistic_both_ns, effects = "fixed", conf.int = TRUE, exponentiate = TRUE) %>%
+  filter(grepl("^vegstat2", term)) %>%
+  mutate(part = "Probability of any payment (OR)")
+
+gamma_terms <- tidy(m_gamma_both_ns_disp, effects = "fixed", conf.int = TRUE, exponentiate = TRUE) %>%
+  filter(grepl("^vegstat2", term)) %>%
+  mutate(part = "Payment amount | positive (cost ratio)")
+
+# Plot data
+forest_data <- bind_rows(logistic_terms, gamma_terms) %>% 
+  mutate(
+    level       = gsub("^vegstat2", "", term),
+    group_label = factor(veg_labels[level], levels = veg_labels[veg_order]),
+    part = factor(part, levels = part_order)
+  )
+
+veg_palette <- setNames(scales::hue_pal()(5), unname(veg_labels[veg_order]))
+
+# Reference-category rows
+ref_data <- data.frame(
+  group_label = factor(unname(veg_labels["nonveg"]), levels = unname(veg_labels[veg_order])),
+  part        = unique(forest_data$part),
+  estimate    = 1
+) %>% 
+  mutate(part = factor(part, levels = part_order))
+
+# Forest plots, side by side
+ggplot() +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "grey50") +
+  geom_pointrange(
+    data = forest_data,
+    aes(x = group_label, y = estimate, ymin = conf.low, ymax = conf.high, color = group_label),
+    size = 0.7, linewidth = 1
+  ) +
+  geom_point(
+    data = ref_data,
+    aes(x = group_label, y = estimate),
+    shape = 18, size = 5, color = "black"
+  ) +
+  scale_y_log10(labels = scales::label_number(accuracy = 0.1)) +
+  scale_color_manual(values = veg_palette, guide = "none") +
+  scale_x_discrete(limits = rev(unname(veg_labels[veg_order]))) +
+  coord_flip() +
+  facet_wrap(~ part, scales = "free_x") +
+  labs(
+    x = NULL,
+    y = "Estimate (log scale)",
+    title = "Two-part model coefficients by diet group",
+    subtitle = "Odds ratio for probability of any payment and cost ratio for payment amount given positive"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.spacing      = unit(2, "lines"),
+    strip.background   = element_rect(fill = "grey90", color = "grey40", linewidth = 0.5),
+    strip.text         = element_text(face = "bold", size = 11),
+    panel.border       = element_rect(color = "grey70", fill = NA, linewidth = 0.5)
+  )
+
+```
+
+```{r hurdle_model_OR_MR_tables}
+
+add_ref <- function(df, part_label) {
+  bind_rows(
+    df %>% select(term, estimate, conf.low, conf.high, p.value),
+    tibble(term = "vegstat2nonveg", estimate = 1, conf.low = NA, conf.high = NA, p.value = NA)
+  ) %>%
+    mutate(
+      `Diet group` = unname(veg_labels[gsub("^vegstat2", "", term)]),
+      `Diet group` = factor(`Diet group`, levels = unname(veg_labels[veg_order])),
+      Part = part_label
+    ) %>%
+    arrange(`Diet group`)
+}
+
+results_tbl <- bind_rows(
+  add_ref(logistic_terms, "Probability of any payment (OR)"),
+  add_ref(gamma_terms,    "Payment amount | positive (mean ratio)")
+) %>%
+  transmute(
+    Part,
+    `Diet group`,
+    `Estimate (95% CI)` = case_when(
+      `Diet group` == "Non-vegetarian" ~ "1.00 (Reference)",
+      TRUE ~ sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
+    ),
+    `p-value` = case_when(
+      `Diet group` == "Non-vegetarian" ~ "--",
+      p.value < 0.001 ~ "<0.001",
+      TRUE ~ sprintf("%.3f", p.value)
+    )
+  ) %>%
+  mutate(Part = ifelse(duplicated(Part), "", Part))
+
+knitr::kable(results_tbl, align = c("l", "l", "c", "c"))
+
+```
+
+### Expected total annual healthcare expenditure by dietary pattern
+
+* The expected total annual healthcare expenditure was calculated as follows:
+  * From the first, logistic part, the predicted probability of any payment was estimated for each dietary group, adjusting for all other covariates
+  * Similarly, from the second, Gamma part, the predicted mean payment conditional on positive spending was estimated for each dietary group
+  * Multiplying these together yields the expected total annual payment per beneficiary-year, $E[Y] = Pr(Y>0) \times E[Y \mid Y>0]$
+
+* Predicted mean annual total payment rises steadily from vegan (lowest, around \$11,700) through lacto-ovo and pesco-vegetarian (both in the \$13,500–\$14,000 range) to semi-vegetarian (around \$15,600) and non-vegetarian (highest, around \$16,700)
+  * Vegans have roughly \$5,000 lower predicted annual spending than non-vegetarians -- about a 30% difference — the largest gap of any group comparison in this plot
+  * This combined result is consistent with the two-part breakdown shown in the forest plots -- vegans' lower expected spending reflects both a lower probability of any healthcare use and lower spending conditional on use
+
+```{r hurdle_model_estimated_cost, cache = TRUE, fig.height = 4}
+
+# Combine the both stages -------------------------------------------------
+
+# population-averaged predictions from the two-part model were computed 
+# accounting for between-beneficiary random-intercept heterogeneity (conditional mode)
+# rather than by simple plug-in prediction
+
+veg_levels <- levels(mdcr_ahs_65_ffs$vegstat2)
+gamma_data <- subset(mdcr_ahs_65_ffs, total_pmt_2022usd > 0 & ab_entitled_months > 0)
+
+compute_logit_avgpred <- function(veg_level, data, model) {
+  nd <- data
+  nd$vegstat2 <- factor(veg_level, levels = levels(data$vegstat2))
+  avg_predictions(model, newdata = nd, type = "response")
+}
+
+compute_gamma_avgpred <- function(veg_level, data, model) {
+  nd <- data
+  nd$vegstat2 <- factor(veg_level, levels = levels(data$vegstat2))
+  nd$ab_entitled_months <- 12
+  avg_predictions(model, newdata = nd, type = "response")
+}
+
+logit_results <- lapply(veg_levels, 
+                        compute_logit_avgpred, 
+                        data = mdcr_ahs_65_ffs, 
+                        model = m_logistic_both_ns
+                        )
+
+gamma_results <- lapply(veg_levels, 
+                        compute_gamma_avgpred, 
+                        data = gamma_data, 
+                        model = m_gamma_both_ns_disp
+                        )
+
+names(logit_results) <- names(gamma_results) <- veg_levels
+
+combined <- data.frame(
+  vegstat2 = veg_levels,
+  p_hat    = sapply(logit_results, function(x) x$estimate),
+  se_p     = sapply(logit_results, function(x) x$std.error),
+  mu_hat   = sapply(gamma_results, function(x) x$estimate),
+  se_mu    = sapply(gamma_results, function(x) x$std.error)
+)
+
+combined$E_Y         <- combined$p_hat * combined$mu_hat
+combined$se_EY       <- sqrt(combined$mu_hat^2 * combined$se_p^2 + combined$p_hat^2 * combined$se_mu^2)
+combined$E_Y_dollars <- combined$E_Y * 1000
+combined$ci_lo       <- (combined$E_Y - 1.96 * combined$se_EY) * 1000
+combined$ci_hi       <- (combined$E_Y + 1.96 * combined$se_EY) * 1000
+
+ref <- combined[combined$vegstat2 == "nonveg", ]
+combined$diff_vs_nonveg    <- combined$E_Y_dollars - ref$E_Y_dollars
+combined$se_diff_vs_nonveg <- sqrt((combined$se_EY * 1000)^2 + (ref$se_EY * 1000)^2)
+combined$diff_ci_lo <- combined$diff_vs_nonveg - 1.96 * combined$se_diff_vs_nonveg
+combined$diff_ci_hi <- combined$diff_vs_nonveg + 1.96 * combined$se_diff_vs_nonveg
+
+combined <- combined %>%
+  mutate(vegstat2_label = factor(veg_labels[as.character(vegstat2)],
+                                 levels = veg_labels[veg_order]))
+
+# Dot-whisker plot
+ggplot(combined, aes(x = vegstat2_label, y = E_Y_dollars, color = vegstat2_label)) +
+  geom_pointrange(aes(ymin = ci_lo, ymax = ci_hi), size = 0.8, linewidth = 1) +
+  scale_x_discrete(limits = rev(veg_labels[veg_order])) +
+  scale_y_continuous(labels = scales::label_dollar(), limits = c(10000, 18000)) +
+  coord_flip() +
+  labs(
+    x = NULL,
+    y = "Predicted mean annual total payment (2022 USD)",
+    title = "Model-predicted marginal payment by diet group",
+    subtitle = "Population-averaged estimate: Pr(any payment) x mean payment | positive, with 95% CI"
+  ) +
+  guides(color = "none") +
+  theme_minimal()
+
+```
+
+```{r hurdle_model_estimated_cost_table}
+
+library(scales)
+
+combined_tbl <- combined %>%
+  mutate(
+    `Diet group` = factor(unname(veg_labels[as.character(vegstat2)]),
+                          levels = unname(veg_labels[veg_order]))
+  ) %>%
+  arrange(`Diet group`) %>%
+  transmute(
+    `Diet group`,
+    `Pr(any payment)` = percent(p_hat, accuracy = 0.1),
+    `Mean payment | positive ($)` = comma(round(mu_hat * 1000)),
+    `Predicted mean total payment, $ (95% CI)` = sprintf(
+      "%s (%s-%s)", comma(round(E_Y_dollars)), comma(round(ci_lo)), comma(round(ci_hi))
+    ),
+    `Difference vs. non-vegetarian ($)` = ifelse(
+      `Diet group` == "Non-vegetarian", "Reference",
+      comma(round(diff_vs_nonveg))
+    )
+  )
+
+knitr::kable(combined_tbl, row.names = FALSE, align = c("l", "c", "c", "c", "c"))
+
+```
