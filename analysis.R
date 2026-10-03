@@ -9,7 +9,10 @@ pacs <- c(
   "glmmTMB", 
   "splines", 
   "broom.mixed", 
-  "marginaleffects"
+  "marginaleffects",
+  "scales",
+  "gt",
+  "rlang"
 )
 sapply(pacs, require, character.only = TRUE)
 
@@ -590,204 +593,10 @@ mortality_data %>%
   ) %>% 
   knitr::kable(align = c("l", "r", "r", "r", "r", "r"))
 
-person_years <- mdcr_ahs_65_ffs %>%
-  count(vegstat, name = "total_person_years")
-
-deaths <- mortality_data %>%
-  group_by(vegstat) %>%
-  summarise(n_died = sum(died), .groups = "drop")
-
-deaths %>% 
-  left_join(person_years, by = "vegstat") %>%
-  mutate(rate_per_1000_py = 1000 * n_died / total_person_years)
-
-# Mean/SD/Median age of death by vegstat
-death_age <- mdcr_ahs_65_ffs %>%
-  filter(died_this_year == "Yes") %>%
-  distinct(bene_id, vegstat, age)
-
-death_age %>%
-  group_by(vegstat) %>%
-  summarise(mean_age = mean(age, na.rm = TRUE),
-            sd_age   = sd(age, na.rm = TRUE),
-            median_age = median(age, na.rm = TRUE))
-
-# Age-standardized
-age_bands  <- c(65, 70, 75, 80, 85, 90, 120)
-age_labels <- c("65-69", "70-74", "75-79", "80-84", "85-89", "90+")
-
-mort_age <- mdcr_ahs_65_ffs %>%
-  mutate(age_band = cut(age, breaks = age_bands, labels = age_labels, right = FALSE)) %>%
-  group_by(vegstat, age_band) %>%
-  summarise(
-    deaths       = sum(died_this_year == "Yes", na.rm = TRUE),
-    person_years = n(),
-    .groups = "drop"
-  ) %>%
-  mutate(rate = deaths / person_years)
-
-# standard population: pooled (all-vegstat) person-years by age band
-standard_pop <- mort_age %>%
-  group_by(age_band) %>%
-  summarise(std_py = sum(person_years), .groups = "drop") %>%
-  mutate(std_weight = std_py / sum(std_py))
-
-age_adj_rates <- mort_age %>%
-  left_join(standard_pop, by = "age_band") %>%
-  group_by(vegstat) %>%
-  summarise(age_adj_rate_per_1000 = 1000 * sum(rate * std_weight), .groups = "drop")
-
-age_adj_rates
-
 # Cost-distribution/skewness table by vegstat
 # Uses the full beneficiary-year panel (mdcr_ahs_65_ffs)
-
-cost_summary <- mdcr_ahs_65_ffs %>%
-  group_by(vegstat) %>%
-  summarise(
-    n            = n(),
-    pct_zero     = 100 * mean(total_pmt_2022usd == 0, na.rm = TRUE),
-    mean         = mean(total_pmt_2022usd, na.rm = TRUE),
-    sd           = sd(total_pmt_2022usd, na.rm = TRUE),
-    median       = median(total_pmt_2022usd, na.rm = TRUE),
-    p25          = quantile(total_pmt_2022usd, 0.25, na.rm = TRUE),
-    p75          = quantile(total_pmt_2022usd, 0.75, na.rm = TRUE),
-    p90          = quantile(total_pmt_2022usd, 0.90, na.rm = TRUE),
-    p95          = quantile(total_pmt_2022usd, 0.95, na.rm = TRUE),
-    p99          = quantile(total_pmt_2022usd, 0.99, na.rm = TRUE),
-    gini         = ineq::Gini(total_pmt_2022usd, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  mutate(iqr = p75 - p25)
-
-# Add an "Overall" row (all vegstat groups pooled)
-cost_summary_overall <- mdcr_ahs_65_ffs %>%
-  summarise(
-    vegstat      = "Overall",
-    n            = n(),
-    pct_zero     = 100 * mean(total_pmt_2022usd == 0, na.rm = TRUE),
-    mean         = mean(total_pmt_2022usd, na.rm = TRUE),
-    sd           = sd(total_pmt_2022usd, na.rm = TRUE),
-    median       = median(total_pmt_2022usd, na.rm = TRUE),
-    p25          = quantile(total_pmt_2022usd, 0.25, na.rm = TRUE),
-    p75          = quantile(total_pmt_2022usd, 0.75, na.rm = TRUE),
-    p90          = quantile(total_pmt_2022usd, 0.90, na.rm = TRUE),
-    p95          = quantile(total_pmt_2022usd, 0.95, na.rm = TRUE),
-    p99          = quantile(total_pmt_2022usd, 0.99, na.rm = TRUE),
-    gini         = ineq::Gini(total_pmt_2022usd, na.rm = TRUE)
-  ) %>%
-  mutate(iqr = p75 - p25)
-
-cost_summary_full <- bind_rows(cost_summary, cost_summary_overall)
-
-print(cost_summary_full, width = Inf)
-
-cost_summary_table <- cost_summary_full %>%
-  transmute(
-    vegstat,
-    n,
-    `% zero payment`   = sprintf("%.1f", pct_zero),
-    `Mean (SD)`        = sprintf("%s (%s)", scales::comma(round(mean)), scales::comma(round(sd))),
-    `Median (IQR)`     = sprintf("%s (%s-%s)", scales::comma(round(median)),
-                                 scales::comma(round(p25)), scales::comma(round(p75))),
-    P90                = scales::comma(round(p90)),
-    P95                = scales::comma(round(p95)),
-    P99                = scales::comma(round(p99)),
-    Gini               = sprintf("%.3f", gini)
-  )
-
-cost_summary_table
-
-# Add columns of tail share of total payment
-tail_share <- mdcr_ahs_65_ffs %>%
-  group_by(vegstat2) %>%
-  summarise(
-    p95_cut          = quantile(total_pmt_2022usd, 0.95, na.rm = TRUE),
-    p99_cut          = quantile(total_pmt_2022usd, 0.99, na.rm = TRUE),
-    total_dollars    = sum(total_pmt_2022usd, na.rm = TRUE),
-    dollars_top5pct  = sum(total_pmt_2022usd[total_pmt_2022usd > p95_cut], na.rm = TRUE),
-    dollars_top1pct  = sum(total_pmt_2022usd[total_pmt_2022usd > p99_cut], na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    pct_dollars_top5pct = 100 * dollars_top5pct / total_dollars,
-    pct_dollars_top1pct = 100 * dollars_top1pct / total_dollars
-  ) %>%
-  select(vegstat2, pct_dollars_top5pct, pct_dollars_top1pct)
-
-# Overall row, same logic pooling all groups
-tail_share_overall <- mdcr_ahs_65_ffs %>%
-  summarise(
-    vegstat2         = "Overall",
-    p95_cut          = quantile(total_pmt_2022usd, 0.95, na.rm = TRUE),
-    p99_cut          = quantile(total_pmt_2022usd, 0.99, na.rm = TRUE),
-    total_dollars    = sum(total_pmt_2022usd, na.rm = TRUE),
-    dollars_top5pct  = sum(total_pmt_2022usd[total_pmt_2022usd > p95_cut], na.rm = TRUE),
-    dollars_top1pct  = sum(total_pmt_2022usd[total_pmt_2022usd > p99_cut], na.rm = TRUE)
-  ) %>%
-  mutate(
-    pct_dollars_top5pct = 100 * dollars_top5pct / total_dollars,
-    pct_dollars_top1pct = 100 * dollars_top1pct / total_dollars
-  ) %>%
-  select(vegstat2, pct_dollars_top5pct, pct_dollars_top1pct)
-
-tail_share_full <- bind_rows(tail_share, tail_share_overall)
-
-# Merge into the existing cost distribution table
-cost_summary_full <- cost_summary_full %>%
-  rename(vegstat2 = vegstat) %>%   # match join key name if needed
-  left_join(tail_share_full, by = "vegstat2")
-
-print(cost_summary_full, width = Inf)
-
-veg_labels <- c(
-  vegan       = "Vegan",
-  `lacto-ovo` = "Lacto-ovo vegetarian",
-  pesco       = "Pesco-vegetarian",
-  semi        = "Semi-vegetarian",
-  nonveg      = "Non-vegetarian",
-  Overall     = "Overall"
-)
-veg_order <- c("vegan", "lacto-ovo", "pesco", "semi", "nonveg", "Overall")
-
-library(scales)
-cost_summary_pub <- cost_summary_full %>%
-  mutate(vegstat2 = factor(vegstat2, levels = veg_order)) %>%
-  arrange(vegstat2) %>%
-  transmute(
-    `Diet group`        = unname(veg_labels[as.character(vegstat2)]),
-    N                    = comma(n),
-    `% Zero payment`     = sprintf("%.1f", pct_zero),
-    `Mean (SD), $`       = sprintf("%s (%s)", comma(round(mean)), comma(round(sd))),
-    `Median (IQR), $`    = sprintf("%s (%s-%s)", comma(round(median)), comma(round(p25)), comma(round(p75))),
-    `P90, $`             = comma(round(p90)),
-    `P95, $`             = comma(round(p95)),
-    `P99, $`             = comma(round(p99)),
-    `Gini coefficient`   = sprintf("%.3f", gini),
-    `% $ from top 5%`    = sprintf("%.1f", pct_dollars_top5pct),
-    `% $ from top 1%`    = sprintf("%.1f", pct_dollars_top1pct)
-  )
-
-print(cost_summary_pub)
-
-library(gt)
-
-cost_summary_pub %>%
-  gt() %>%
-  tab_header(
-    title = "Table X. Total payment distribution by diet group"
-  ) %>%
-  tab_footnote(
-    footnote = "N reflects beneficiary-years, not unique beneficiaries. Gini coefficient includes beneficiary-years with zero payment. Top 5%/1% dollar shares use each group's own percentile cutoffs.",
-    locations = cells_column_labels(columns = c(`Gini coefficient`, `% $ from top 5%`, `% $ from top 1%`))
-  ) %>%
-  cols_align(align = "center", columns = -`Diet group`) %>%
-  tab_style(
-    style = cell_borders(sides = "top", color = "black", weight = px(1.5)),
-    locations = cells_body(rows = `Diet group` == "Overall")
-  ) %>%
-  tab_options(table.font.size = px(12))
-
+make_cost_summary_table(mdcr_ahs_65_ffs, payment_var = "total_pmt_2022usd", include_zero = TRUE)
+make_cost_summary_table(mdcr_ahs_65_ffs, payment_var = "total_pmt_2022usd", include_zero = FALSE)
 
 # non-zero-payment rate by year × vegstat
 nonzero_by_year <- mdcr_ahs_65_ffs %>%
