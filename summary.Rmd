@@ -480,7 +480,7 @@ mdcr_ahs_65_ffs <- mdcr_ahs_65_ffs %>%
 
 ### Participant characteristics at Medicare follow-up entry
 
-* The table below shows participant characteristics measured either at Medicare follow-up entry (2008-2022) or, for variables drawn from the AHS-2 questionnaire, at AHS-2 baseline. [Download table as PDF](results/descriptive_table.pdf)
+* The table below shows participant characteristics measured either at Medicare follow-up entry (2008-2022) or, for variables drawn from the AHS-2 questionnaire, at AHS-2 baseline
   * The variable `Age at Medicare follow-up entry` refers to the beneficiary's age at their first appearance in Medicare data (2008-2022)
   * Race/ethnicity was derived from the [RTI race code](https://resdac.org/cms-data/variables/research-triangle-institute-rti-race-code) in the MBSF and collapsed into 3 groups: Non-Hispanic White, Black (or African-American), and other race. Non-Hispanic White served as the reference group in the model
   * Census region was derived from `STATE_CODE` in the MBSF (West as the reference)
@@ -492,7 +492,7 @@ mdcr_ahs_65_ffs <- mdcr_ahs_65_ffs %>%
     * Disability insurance benefit (DIB) and/or end-stage renal disease (ESRD)
   * The variable `Part A and Part B coverage (months)` was calculated as the minimum of total Part A and Part B coverage months in the year. This assumes the two coverage periods overlap fully, which holds for nearly all beneficiaries in this cohort
 
-```{r baseline_descriptives, fig.alt = "Baseline characteristics by diet group"}
+```{r baseline_descriptives, results = 'asis'}
 
 # Baseline characteristics
 baseline_data <- mdcr_ahs_65_ffs %>%
@@ -538,7 +538,7 @@ table_vars <- c(
 #   print(showAllLevels = TRUE, test = FALSE) %>% 
 #   kableone()
 
-tbl <- baseline_data %>%
+baseline_data %>%
   select(all_of(table_vars), vegstat) %>%
   tbl_summary(
     by = vegstat,
@@ -567,18 +567,14 @@ tbl <- baseline_data %>%
   modify_header(label ~ "**Characteristic**") %>%
   modify_spanning_header(all_stat_cols() ~ "**Vegetarian Status**") %>%
   bold_labels() %>% 
-  as_gt()
-
-paths <- save_gt_table(tbl, "descriptive_table")
-knitr::include_graphics(paths$png)
+  as_gt() %>%
+  gt::as_raw_html(inline_css = TRUE)
 
 ```
 
 ### Number of beneficiaries by years and diet pattern
 
-* See below for the number of beneficiaries by year and dietary pattern. [Download table as PDF](results/n_beneficiaries_by_year_diet.pdf)
-
-```{r N_bene_by_year_diet, fig.alt = "Number of beneficiaries by years and diet pattern"}
+```{r N_bene_by_year_diet, results = 'asis'}
 
 # Person-year by vegstat
 n_bene_by_year_diet <- mdcr_ahs_65_ffs %>%
@@ -597,7 +593,7 @@ n_bene_by_year_diet <- mdcr_ahs_65_ffs %>%
   relocate(Total, .after = extract_year) %>%
   setNames(c("Year", "Total", "Vegan", "Lacto-ovo", "Pesco-veg", "Semi-veg", "Non-veg"))
 
-tbl <- n_bene_by_year_diet %>%
+n_bene_by_year_diet %>%
   gt() %>%
   tab_header(title = "Number of beneficiaries by year and dietary pattern") %>%
   cols_label(Year = "Year", Total = "Total N") %>%
@@ -609,10 +605,8 @@ tbl <- n_bene_by_year_diet %>%
   tab_style(
     style = cell_text(weight = "bold"),
     locations = cells_column_labels(everything())
-  ) 
-
-paths <- save_gt_table(tbl, "n_beneficiaries_by_year_diet")
-knitr::include_graphics(paths$png)
+  ) %>% 
+  gt::as_raw_html(inline_css = TRUE)
 
 ```
 
