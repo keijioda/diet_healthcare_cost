@@ -480,7 +480,7 @@ mdcr_ahs_65_ffs <- mdcr_ahs_65_ffs %>%
 
 ### Participant characteristics at Medicare follow-up entry
 
-* The table below shows participant characteristics measured either at Medicare follow-up entry (2008-2022) or, for variables drawn from the AHS-2 questionnaire, at AHS-2 baseline
+* The table below shows participant characteristics measured either at Medicare follow-up entry (2008-2022) or, for variables drawn from the AHS-2 questionnaire, at AHS-2 baseline. [Download table as PDF](results/descriptive_table.pdf)
   * The variable `Age at Medicare follow-up entry` refers to the beneficiary's age at their first appearance in Medicare data (2008-2022)
   * Race/ethnicity was derived from the [RTI race code](https://resdac.org/cms-data/variables/research-triangle-institute-rti-race-code) in the MBSF and collapsed into 3 groups: Non-Hispanic White, Black (or African-American), and other race. Non-Hispanic White served as the reference group in the model
   * Census region was derived from `STATE_CODE` in the MBSF (West as the reference)
@@ -492,7 +492,7 @@ mdcr_ahs_65_ffs <- mdcr_ahs_65_ffs %>%
     * Disability insurance benefit (DIB) and/or end-stage renal disease (ESRD)
   * The variable `Part A and Part B coverage (months)` was calculated as the minimum of total Part A and Part B coverage months in the year. This assumes the two coverage periods overlap fully, which holds for nearly all beneficiaries in this cohort
 
-```{r baseline_descriptives, results = 'asis'}
+```{r baseline_descriptives, fig.alt = "Baseline characteristics by diet group"}
 
 # Baseline characteristics
 baseline_data <- mdcr_ahs_65_ffs %>%
@@ -538,7 +538,7 @@ table_vars <- c(
 #   print(showAllLevels = TRUE, test = FALSE) %>% 
 #   kableone()
 
-baseline_data %>%
+tbl <- baseline_data %>%
   select(all_of(table_vars), vegstat) %>%
   tbl_summary(
     by = vegstat,
@@ -567,14 +567,18 @@ baseline_data %>%
   modify_header(label ~ "**Characteristic**") %>%
   modify_spanning_header(all_stat_cols() ~ "**Vegetarian Status**") %>%
   bold_labels() %>% 
-  as_gt() %>%
-  gt::as_raw_html(inline_css = TRUE)
+  as_gt()
+
+paths <- save_gt_table(tbl, "descriptive_table")
+knitr::include_graphics(paths$png)
 
 ```
 
 ### Number of beneficiaries by years and diet pattern
 
-```{r N_bene_by_year_diet, results = 'asis'}
+* See below for the number of beneficiaries by year and dietary pattern. [Download table as PDF](results/n_beneficiaries_by_year_diet.pdf)
+
+```{r N_bene_by_year_diet, fig.alt = "Number of beneficiaries by years and diet pattern"}
 
 # Person-year by vegstat
 n_bene_by_year_diet <- mdcr_ahs_65_ffs %>%
@@ -593,7 +597,7 @@ n_bene_by_year_diet <- mdcr_ahs_65_ffs %>%
   relocate(Total, .after = extract_year) %>%
   setNames(c("Year", "Total", "Vegan", "Lacto-ovo", "Pesco-veg", "Semi-veg", "Non-veg"))
 
-n_bene_by_year_diet %>%
+tbl <- n_bene_by_year_diet %>%
   gt() %>%
   tab_header(title = "Number of beneficiaries by year and dietary pattern") %>%
   cols_label(Year = "Year", Total = "Total N") %>%
@@ -605,8 +609,10 @@ n_bene_by_year_diet %>%
   tab_style(
     style = cell_text(weight = "bold"),
     locations = cells_column_labels(everything())
-  ) %>% 
-  gt::as_raw_html(inline_css = TRUE)
+  ) 
+
+paths <- save_gt_table(tbl, "n_beneficiaries_by_year_diet")
+knitr::include_graphics(paths$png)
 
 ```
 
@@ -639,7 +645,7 @@ mdcr_ahs_65_ffs %>%
 * Total healthcare payment was adjusted for inflation using the [CPI for medical care](https://fred.stlouisfed.org/series/cpimedsl)
   * Each year's payments were multiplied by a deflator equal to the ratio of the 2022 index value to that year's index value
 
-* Summary statistics of total healthcare payment by dietary group are shown below, with all dollar values expressed in real (2022) dollars
+* Summary statistics of total healthcare payment by dietary group are shown below, with all dollar values expressed in real (2022) dollars. [Download table as PDF](results/cost_summary_total_incl_zero.pdf)
   * Vegans have the highest proportion of zero-payment beneficiary-years (20.3%) and have the lowest mean/median total payment
   * Vegans show the highest Gini coefficient (0.770), indicating the most unequal spending distribution among all diet groups
   * Spending is highly concentrated at the top across all groups
@@ -648,157 +654,39 @@ mdcr_ahs_65_ffs %>%
     * Vegans again showing the highest concentration (44.4% and 16.5%, respectively)
   * Despite having the lowest mean spending, vegans show the greatest relative inequality in spending
 
-```{r total_pay_distribution_stats, results = 'asis'}
+```{r total_pay_distribution_stats, fig.alt = "Total payment distribution by diet group including zero"}
 
 # Cost-distribution/skewness table by vegstat
 # Uses the full beneficiary-year panel (mdcr_ahs_65_ffs)
+tbl <- make_cost_summary_table(
+  mdcr_ahs_65_ffs, 
+  payment_var = "total_pmt_2022usd", 
+  include_zero = TRUE
+  )
 
-make_cost_summary_table(mdcr_ahs_65_ffs, payment_var = "total_pmt_2022usd", include_zero = TRUE) %>% 
-  gt::as_raw_html(inline_css = TRUE)
+paths <- save_gt_table(tbl, "cost_summary_total_incl_zero")
+knitr::include_graphics(paths$png)
 
 ```
 
-* The same statistics were calculated again after excluding beneficiary-years of zero payments. After excluding zero-payment years:
+* The same statistics were calculated again after excluding beneficiary-years of zero payments. [Download table as PDF](results/cost_summary_total_excl_zero.pdf). After excluding zero-payment years:
   * Mean and median payments rise substantially for all diet groups
     * The Gini coefficients dropped as well
     * Spending concentration at the top remains high but is somewhat less extreme
   * Vegans retain the highest spending concentration among users (highest Gini, highest top 5%/1% shares)
     * suggesting that even conditional on using any healthcare, vegan spending is somewhat more concentrated among a smaller subset of high-cost users than in other diet groups
 
-```{r total_pay_distribution_stats_exclude_zero, results = 'asis'}
+```{r total_pay_distribution_stats_exclude_zero, fig.alt = "Total payment distribution by diet group excluding zero"}
 
-# Cost-distribution/skewness table by vegstat
-# Uses the full beneficiary-year panel (mdcr_ahs_65_ffs)
-
-cost_summary <- mdcr_ahs_65_ffs %>%
-  filter(total_pmt_2022usd > 0) %>% 
-  group_by(vegstat) %>%
-  summarise(
-    n            = n(),
-    pct_zero     = 100 * mean(total_pmt_2022usd == 0, na.rm = TRUE),
-    mean         = mean(total_pmt_2022usd, na.rm = TRUE),
-    sd           = sd(total_pmt_2022usd, na.rm = TRUE),
-    median       = median(total_pmt_2022usd, na.rm = TRUE),
-    p25          = quantile(total_pmt_2022usd, 0.25, na.rm = TRUE),
-    p75          = quantile(total_pmt_2022usd, 0.75, na.rm = TRUE),
-    p90          = quantile(total_pmt_2022usd, 0.90, na.rm = TRUE),
-    p95          = quantile(total_pmt_2022usd, 0.95, na.rm = TRUE),
-    p99          = quantile(total_pmt_2022usd, 0.99, na.rm = TRUE),
-    gini         = ineq::Gini(total_pmt_2022usd, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  mutate(iqr = p75 - p25)
-
-# Add an "Overall" row (all vegstat groups pooled)
-cost_summary_overall <- mdcr_ahs_65_ffs %>%
-  filter(total_pmt_2022usd > 0) %>% 
-  summarise(
-    vegstat      = "Overall",
-    n            = n(),
-    pct_zero     = 100 * mean(total_pmt_2022usd == 0, na.rm = TRUE),
-    mean         = mean(total_pmt_2022usd, na.rm = TRUE),
-    sd           = sd(total_pmt_2022usd, na.rm = TRUE),
-    median       = median(total_pmt_2022usd, na.rm = TRUE),
-    p25          = quantile(total_pmt_2022usd, 0.25, na.rm = TRUE),
-    p75          = quantile(total_pmt_2022usd, 0.75, na.rm = TRUE),
-    p90          = quantile(total_pmt_2022usd, 0.90, na.rm = TRUE),
-    p95          = quantile(total_pmt_2022usd, 0.95, na.rm = TRUE),
-    p99          = quantile(total_pmt_2022usd, 0.99, na.rm = TRUE),
-    gini         = ineq::Gini(total_pmt_2022usd, na.rm = TRUE)
-  ) %>%
-  mutate(iqr = p75 - p25)
-
-cost_summary_full <- bind_rows(cost_summary, cost_summary_overall)
-
-cost_summary_table <- cost_summary_full %>%
-  transmute(
-    vegstat,
-    n,
-    `% zero payment`   = sprintf("%.1f", pct_zero),
-    `Mean (SD)`        = sprintf("%s (%s)", scales::comma(round(mean)), scales::comma(round(sd))),
-    `Median (IQR)`     = sprintf("%s (%s-%s)", scales::comma(round(median)),
-                                 scales::comma(round(p25)), scales::comma(round(p75))),
-    P90                = scales::comma(round(p90)),
-    P95                = scales::comma(round(p95)),
-    P99                = scales::comma(round(p99)),
-    Gini               = sprintf("%.3f", gini)
+# Cost-distribution/skewness table by vegstat, excluding zero payment
+tbl <- make_cost_summary_table(
+  mdcr_ahs_65_ffs, 
+  payment_var = "total_pmt_2022usd", 
+  include_zero = FALSE
   )
 
-# Add columns of tail share of total payment
-tail_share <- mdcr_ahs_65_ffs %>%
-  filter(total_pmt_2022usd > 0) %>% 
-  group_by(vegstat2) %>%
-  summarise(
-    p95_cut          = quantile(total_pmt_2022usd, 0.95, na.rm = TRUE),
-    p99_cut          = quantile(total_pmt_2022usd, 0.99, na.rm = TRUE),
-    total_dollars    = sum(total_pmt_2022usd, na.rm = TRUE),
-    dollars_top5pct  = sum(total_pmt_2022usd[total_pmt_2022usd > p95_cut], na.rm = TRUE),
-    dollars_top1pct  = sum(total_pmt_2022usd[total_pmt_2022usd > p99_cut], na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    pct_dollars_top5pct = 100 * dollars_top5pct / total_dollars,
-    pct_dollars_top1pct = 100 * dollars_top1pct / total_dollars
-  ) %>%
-  select(vegstat2, pct_dollars_top5pct, pct_dollars_top1pct)
-
-# Overall row, same logic pooling all groups
-tail_share_overall <- mdcr_ahs_65_ffs %>%
-  filter(total_pmt_2022usd > 0) %>% 
-  summarise(
-    vegstat2         = "Overall",
-    p95_cut          = quantile(total_pmt_2022usd, 0.95, na.rm = TRUE),
-    p99_cut          = quantile(total_pmt_2022usd, 0.99, na.rm = TRUE),
-    total_dollars    = sum(total_pmt_2022usd, na.rm = TRUE),
-    dollars_top5pct  = sum(total_pmt_2022usd[total_pmt_2022usd > p95_cut], na.rm = TRUE),
-    dollars_top1pct  = sum(total_pmt_2022usd[total_pmt_2022usd > p99_cut], na.rm = TRUE)
-  ) %>%
-  mutate(
-    pct_dollars_top5pct = 100 * dollars_top5pct / total_dollars,
-    pct_dollars_top1pct = 100 * dollars_top1pct / total_dollars
-  ) %>%
-  select(vegstat2, pct_dollars_top5pct, pct_dollars_top1pct)
-
-tail_share_full <- bind_rows(tail_share, tail_share_overall)
-
-# Merge into the existing cost distribution table
-cost_summary_full <- cost_summary_full %>%
-  rename(vegstat2 = vegstat) %>%  
-  left_join(tail_share_full, by = "vegstat2")
-
-cost_summary_pub <- cost_summary_full %>%
-  mutate(vegstat2 = factor(vegstat2, levels = veg_order)) %>%
-  arrange(vegstat2) %>%
-  transmute(
-    `Diet group`        = unname(veg_labels[as.character(vegstat2)]),
-    N                    = comma(n),
-    `% Zero payment`     = sprintf("%.1f", pct_zero),
-    `Mean (SD), $`       = sprintf("%s (%s)", comma(round(mean)), comma(round(sd))),
-    `Median (IQR), $`    = sprintf("%s (%s-%s)", comma(round(median)), comma(round(p25)), comma(round(p75))),
-    `P90, $`             = comma(round(p90)),
-    `P95, $`             = comma(round(p95)),
-    `P99, $`             = comma(round(p99)),
-    `Gini coefficient`   = sprintf("%.3f", gini),
-    `% $ from top 5%`    = sprintf("%.1f", pct_dollars_top5pct),
-    `% $ from top 1%`    = sprintf("%.1f", pct_dollars_top1pct)
-  )
-
-cost_summary_pub %>%
-  gt() %>%
-  tab_header(
-    title = "Total payment distribution by diet group, excluding zero payments"
-  ) %>%
-  tab_footnote(
-    footnote = "N reflects beneficiary-years, not unique beneficiaries. Gini coefficient excludes beneficiary-years with zero payment. Top 5%/1% dollar shares use each group's own percentile cutoffs.",
-    locations = cells_column_labels(columns = c(`Gini coefficient`, `% $ from top 5%`, `% $ from top 1%`))
-  ) %>%
-  cols_align(align = "center", columns = -`Diet group`) %>%
-  tab_style(
-    style = cell_borders(sides = "top", color = "black", weight = px(1.5)),
-    locations = cells_body(rows = `Diet group` == "Overall")
-  ) %>%
-  tab_options(table.font.size = px(12)) %>% 
-  gt::as_raw_html(inline_css = TRUE)
+paths <- save_gt_table(tbl, "cost_summary_total_excl_zero")
+knitr::include_graphics(paths$png)
 
 ```
 

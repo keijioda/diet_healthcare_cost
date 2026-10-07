@@ -1,23 +1,22 @@
 
-# Labels and order for dietary patterns
-veg_labels <- c(
-  vegan       = "Vegan",
-  `lacto-ovo` = "Lacto-ovo vegetarian",
-  pesco       = "Pesco-vegetarian",
-  semi        = "Semi-vegetarian",
-  nonveg      = "Non-vegetarian",
-  Overall     = "Overall"
-)
-
-veg_order <- c("vegan", "lacto-ovo", "pesco", "semi", "nonveg", "Overall")
-
 # Function to create cost summary table
 make_cost_summary_table <- function(data,
                                     payment_var,
                                     include_zero = TRUE,
                                     group_var = "vegstat2",
                                     title = NULL) {
-  
+ 
+  veg_labels <- c(
+    vegan       = "Vegan",
+    `lacto-ovo` = "Lacto-ovo vegetarian",
+    pesco       = "Pesco-vegetarian",
+    semi        = "Semi-vegetarian",
+    nonveg      = "Non-vegetarian",
+    Overall     = "Overall"
+  )
+
+  veg_order <- c("vegan", "lacto-ovo", "pesco", "semi", "nonveg", "Overall")
+ 
   payment_sym <- sym(payment_var)
   group_sym   <- sym(group_var)
   
@@ -144,4 +143,58 @@ make_cost_summary_table <- function(data,
     tab_options(table.font.size = px(12))
 #     tab_options(table.font.size = px(12)) %>%
 #     gt::as_raw_html(inline_css = TRUE)
+}
+
+# Save as png/pdf file
+# save_gt_table <- function(gt_tbl, name, dir = "results", zoom = 2, expand = 10) {
+#   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+#   png_path <- file.path(dir, paste0(name, ".png"))
+#   pdf_path <- file.path(dir, paste0(name, ".pdf"))
+#   gt::gtsave(gt_tbl, png_path, zoom = zoom, expand = expand)
+#   gt::gtsave(gt_tbl, pdf_path)
+#   invisible(list(png = png_path, pdf = pdf_path))
+# }
+
+save_gt_table <- function(gt_tbl, name, dir = "results",
+                          zoom = 2, expand = 10,
+                          pdf_width_in = 10.5, margin_in = 0.25) {
+  dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+  png_path  <- file.path(dir, paste0(name, ".png"))
+  pdf_path  <- file.path(dir, paste0(name, ".pdf"))
+  html_path <- tempfile(fileext = ".html")
+  
+  # PNG: unchanged
+  gt::gtsave(gt_tbl, png_path, zoom = zoom, expand = expand)
+  
+  # PDF: print from headless Chrome with a custom page size
+  gt::gtsave(gt_tbl, html_path)
+  url <- paste0("file:///", sub("^/", "", normalizePath(html_path, winslash = "/")))
+  
+  b <- chromote::ChromoteSession$new()
+  on.exit(b$close(), add = TRUE)
+  
+  content_w_px <- (pdf_width_in - 2 * margin_in) * 96
+  b$Emulation$setDeviceMetricsOverride(
+    width = ceiling(content_w_px), height = 800,
+    deviceScaleFactor = 1, mobile = FALSE
+  )
+  
+  # Register the load-event wait BEFORE navigating
+  loaded <- b$Page$loadEventFired(wait_ = FALSE)
+  b$Page$navigate(url, wait_ = FALSE)
+  b$wait_for(loaded)
+  
+  height_px <- b$Runtime$evaluate("document.documentElement.scrollHeight")$result$value
+  pdf_height_in <- height_px / 96 + 2 * margin_in + 0.2
+  
+  pdf <- b$Page$printToPDF(
+    paperWidth      = pdf_width_in,
+    paperHeight     = pdf_height_in,
+    marginTop       = margin_in, marginBottom = margin_in,
+    marginLeft      = margin_in, marginRight  = margin_in,
+    printBackground = TRUE
+  )
+  writeBin(jsonlite::base64_dec(pdf$data), pdf_path)
+  
+  invisible(list(png = png_path, pdf = pdf_path))
 }

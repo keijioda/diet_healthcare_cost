@@ -15,6 +15,7 @@ pacs <- c(
   "rlang"
 )
 sapply(pacs, require, character.only = TRUE)
+source("functions.R")
 
 # Medicare crosswalk ------------------------------------------------------
 
@@ -595,8 +596,17 @@ mortality_data %>%
 
 # Cost-distribution/skewness table by vegstat
 # Uses the full beneficiary-year panel (mdcr_ahs_65_ffs)
-make_cost_summary_table(mdcr_ahs_65_ffs, payment_var = "total_pmt_2022usd", include_zero = TRUE)
-make_cost_summary_table(mdcr_ahs_65_ffs, payment_var = "total_pmt_2022usd", include_zero = FALSE)
+make_cost_summary_table(
+  mdcr_ahs_65_ffs, 
+  payment_var = "total_pmt_2022usd", 
+  include_zero = TRUE
+)
+
+make_cost_summary_table(
+  mdcr_ahs_65_ffs, 
+  payment_var = "total_pmt_2022usd", 
+  include_zero = FALSE
+)
 
 # non-zero-payment rate by year × vegstat
 nonzero_by_year <- mdcr_ahs_65_ffs %>%
@@ -1304,16 +1314,7 @@ ggplot(combined, aes(x = vegstat2_label, y = E_Y_dollars, color = vegstat2_label
 
 # Forest plots for vegstat ------------------------------------------------
 
-# Labels
-veg_labels <- c(
-  vegan       = "Vegan",
-  `lacto-ovo` = "Lacto-ovo vegetarian",
-  pesco       = "Pesco-vegetarian",
-  semi        = "Semi-vegetarian",
-  nonveg      = "Non-vegetarian"
-)
-
-veg_order  <- c("vegan", "lacto-ovo", "pesco", "semi", "nonveg")
+# Label
 part_order <- c("Probability of any payment (OR)", "Payment amount | positive (cost ratio)")
 
 # Extract model estimates
