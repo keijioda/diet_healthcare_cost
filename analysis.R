@@ -492,10 +492,14 @@ baseline_data <- mdcr_ahs_65_ffs %>%
   ungroup() %>% 
   rename(ffs_entry_age = age) %>% 
   mutate(
-    ab_entitled_cat = case_when(
-      ab_entitled_months == 0  ~ "0 months",
-      ab_entitled_months < 12  ~ "1-11 months",
-      ab_entitled_months == 12 ~ "12 months"),
+    parta_cat = case_when(
+      bene_hi_cvrage_tot_mons == 0  ~ "0 months",
+      bene_hi_cvrage_tot_mons < 12  ~ "1-11 months",
+      bene_hi_cvrage_tot_mons == 12 ~ "12 months"),
+    partb_cat = case_when(
+      bene_smi_cvrage_tot_mons == 0  ~ "0 months",
+      bene_smi_cvrage_tot_mons < 12  ~ "1-11 months",
+      bene_smi_cvrage_tot_mons == 12 ~ "12 months"),
     ptd_cvrg_cat = case_when(
       ptd_plan_cvrg_mons == 0  ~ "0 months",
       ptd_plan_cvrg_mons < 12  ~ "1-11 months",
@@ -519,7 +523,8 @@ table_vars <- c(
   "smkcat",
   "alccat",
   "entlmt_rsn",
-  "ab_entitled_cat",
+  "parta_cat",
+  "partb_cat",
   "ptd_cvrg_cat",
   "dual_elgbl_cat"
 )
